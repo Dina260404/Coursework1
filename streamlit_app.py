@@ -15,22 +15,25 @@ st.set_page_config(
 @st.cache_data
 def load_data():
     DATA_FILENAME = Path(__file__).parent / "GlobalTemperatures_Optimized_Half2_English.csv"
-    df = pd.read_csv(DATA_FILENAME, header=None)
-    df.columns = ["Date", "AverageTemperature", "UncertaintyAverageTemperature", "City", "Country", "Latitude", "Longitude"]
+    df = pd.read_csv(DATA_FILENAME)  # ← УБРАТЬ header=None
+
+    # НЕ задавать df.columns вручную — они уже есть
 
     # Обработка широты и долготы
     def parse_lat(lat_str):
-        if 'N' in lat_str:
-            return float(lat_str.replace('N', ''))
-        elif 'S' in lat_str:
-            return -float(lat_str.replace('S', ''))
+        if isinstance(lat_str, str):
+            if 'N' in lat_str:
+                return float(lat_str.replace('N', ''))
+            elif 'S' in lat_str:
+                return -float(lat_str.replace('S', ''))
         return float(lat_str)
 
     def parse_lon(lon_str):
-        if 'E' in lon_str:
-            return float(lon_str.replace('E', ''))
-        elif 'W' in lon_str:
-            return -float(lon_str.replace('W', ''))
+        if isinstance(lon_str, str):
+            if 'E' in lon_str:
+                return float(lon_str.replace('E', ''))
+            elif 'W' in lon_str:
+                return -float(lon_str.replace('W', ''))
         return float(lon_str)
 
     df['Latitude'] = df['Latitude'].apply(parse_lat)
