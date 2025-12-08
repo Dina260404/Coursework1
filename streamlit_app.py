@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
+from sklearn.linear_model import LinearRegression
 
 # === Настройка страницы ===
 st.set_page_config(
@@ -16,9 +17,7 @@ st.set_page_config(
 def load_data():
     DATA_FILENAME = Path(__file__).parent / "GlobalTemperatures_Optimized_Half2_English.csv"
     df = pd.read_csv(DATA_FILENAME)  # ← УБРАТЬ header=None
-
-    # НЕ задавать df.columns вручную — они уже есть
-
+    
     # Обработка широты и долготы
     def parse_lat(lat_str):
         if isinstance(lat_str, str):
@@ -162,6 +161,82 @@ elif page == "2. Результаты анализа":
     month_lat = analysis_df.groupby(["Month", "LatZone"])["AverageTemperature"].mean().unstack(fill_value=0)
     fig = px.imshow(month_lat.T, labels=dict(x="Месяц", y="Широтная зона", color="Температура"), title="Тепловая карта: месяцы × широтные зоны")
     st.plotly_chart(fig, use_container_width=True)
+
+    # === 8. Анализ временных рядов ===
+    st.subheader("8. Анализ временных рядов")
+
+    # Подготовка данных для временного ряда (глобальные средние по годам)
+    ts_df = analysis_df.groupby("Year")["AverageTemperature"].mean().reset_index()
+    ts_df = ts_df.dropna().sort_values("Year")
+    
+    if len(ts_df) > 1:
+        # --- Скользящее среднее (10 лет) ---
+        ts_df["MovingAvg"] = ts_df["AverageTemperature"].rolling(window=10, min_periods=1).mean()
+
+        # --- Линейная регрессия ---
+        X = ts_df[["Year"]].values
+        y = ts_df["AverageTemperature"].values
+        model = LinearRegression()
+        model.fit(X, y)
+        ts_df["Trend"] = model.predict(X)
+
+        # --- Прогноз на 10 лет вперёд ---
+        future_years = np.arange(ts_df["Year"].max() + 1, ts_df["Year"].max() + 11).reshape(-1, 1)
+        future_pred = model.predict(future_years)
+        forecast_df = pd.DataFrame({
+            "Year": future_years.flatten(),
+            "Forecast": future_pred
+        })
+
+        # --- Аномалии (отклонения от тренда) ---
+        ts_df["Anomaly"] = ts_df["AverageTemperature"] - ts_df["Trend"]
+
+        # --- График: Основной тренд + скользящее среднее + прогноз ---
+        fig_ts = go.Figure()
+        fig_ts.add_trace(go.Scatter(
+            x=ts_df["Year"], y=ts_df["AverageTemperature"],
+            mode='markers', marker=dict(size=3, color='lightgray'),
+            name='Средняя температура'
+        ))
+        fig_ts.add_trace(go.Scatter(
+            x=ts_df["Year"], y=ts_df["MovingAvg"],
+            mode='lines', line=dict(color='blue', width=2),
+            name='10-летнее скользящее среднее'
+        ))
+        fig_ts.add_trace(go.Scatter(
+            x=ts_df["Year"], y=ts_df["Trend"],
+            mode='lines', line=dict(color='red', dash='dash', width=2),
+            name='Линейный тренд'
+        ))
+        fig_ts.add_trace(go.Scatter(
+            x=forecast_df["Year"], y=forecast_df["Forecast"],
+            mode='lines', line=dict(color='orange', dash='dot', width=2),
+            name='Прогноз (линейная регрессия)'
+        ))
+        fig_ts.update_layout(
+            title="Анализ временного ряда: тренд, сглаживание и прогноз",
+            xaxis_title="Год",
+            yaxis_title="Средняя температура (°C)"
+        )
+        st.plotly_chart(fig_ts, use_container_width=True)
+
+        # --- График аномалий ---
+        fig_anomaly = px.line(
+            ts_df, x="Year", y="Anomaly",
+            title="Аномалии температуры (отклонение от линейного тренда)",
+            labels={"Anomaly": "Аномалия (°C)"}
+        )
+        fig_anomaly.add_hline(y=0, line_dash="dash", line_color="gray")
+        st.plotly_chart(fig_anomaly, use_container_width=True)
+
+        # --- KPI: Коэффициент наклона, R² ---
+        slope = model.coef_[0]  # °C в год
+        r2 = model.score(X, y)
+        col_a, col_b = st.columns(2)
+        col_a.metric("Наклон тренда", f"{slope * 100:.2f} °C/столетие")
+        col_b.metric("Коэффициент детерминации (R²)", f"{r2:.3f}")
+    else:
+        st.warning("Недостаточно данных для анализа временного ряда.")
 
     # === Интерпретация ===
     st.info("""
