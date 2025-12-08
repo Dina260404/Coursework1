@@ -15,7 +15,7 @@ st.set_page_config(
 # === Кэшированная загрузка данных ===
 @st.cache_data
 def load_data():
-    DATA_FILENAME = Path(__file__).parent / "GlobalTemperatures_Optimized_Half2_English.csv"
+    DATA_FILENAME = Path(__file__).parent / "data" / "GlobalTemperatures_Optimized_Half2_English.csv"
     df = pd.read_csv(DATA_FILENAME, header=None)
     df.columns = ["Date", "AverageTemperature", "UncertaintyAverageTemperature", "City", "Country", "Latitude", "Longitude"]
 
