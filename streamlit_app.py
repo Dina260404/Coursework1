@@ -61,14 +61,12 @@ if page == "1. Исходные данные":
     st.header("🔍 Исследование исходных данных")
 
     # --- KPI ---
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Всего записей", df.shape[0])
     col2.metric("Города", df["City"].nunique())
     col3.metric("Страны", df["Country"].nunique())
-
-    # Пропущенные значения
-    st.write("**Пропущенные значения по колонкам:**")
-    st.write(df.isnull().sum().to_dict())
+    col4.metric("Мин. температура", f"{df['AverageTemperature'].min():.2f}°C")
+    col5.metric("Макс. температура", f"{df['AverageTemperature'].max():.2f}°C")
 
     # --- Таблица ---
     st.subheader("Первые 10 строк датасета")
