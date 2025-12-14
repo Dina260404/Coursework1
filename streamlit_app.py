@@ -12,11 +12,18 @@ st.set_page_config(
     page_icon="🌍",
     layout="wide"
 )
+
+# === Функция для определения индексов выбросов ===
+def outliers_indices(feature, data):
+    mid = data[feature].mean()
+    sigma = data[feature].std()
+    return data[(data[feature] < mid - 3 * sigma) | (data[feature] > mid + 3 * sigma)].index
+
 # === Кэшированная загрузка данных ===
 @st.cache_data
 def load_data():
     DATA_FILENAME = Path(__file__).parent / "GlobalTemperatures_Optimized_Half2_English.csv"
-    df = pd.read_csv(DATA_FILENAME)  # ← УБРАТЬ header=None
+    df = pd.read_csv(DATA_FILENAME)
     
     # Обработка широты и долготы
     def parse_lat(lat_str):
@@ -59,7 +66,7 @@ page = st.sidebar.radio("Навигация", ["1. Исходные данные
 if page == "1. Исходные данные":
     st.header("🔍 Исследование исходных данных")
 
-    # --- KPI ---
+    # --- KPI (на основе полного датасета, БЕЗ удаления выбросов) ---
     col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Всего записей", df.shape[0])
     col2.metric("Города", df["City"].nunique())
@@ -83,25 +90,32 @@ if page == "1. Исходные данные":
     if countries:
         filtered_df = filtered_df[filtered_df["Country"].isin(countries)]
 
+    # --- Очистка от выбросов ДО визуализаций на странице 1 ---
+    if not filtered_df.empty and 'AverageTemperature' in filtered_df.columns:
+        outlier_idx = outliers_indices('AverageTemperature', filtered_df)
+        filtered_df_no_outliers = filtered_df.drop(outlier_idx)
+    else:
+        filtered_df_no_outliers = filtered_df
+
     # --- Распределения ---
-    st.subheader("Распределения")
-    fig1 = px.histogram(filtered_df, x="AverageTemperature", nbins=50, title="Распределение средней температуры")
+    st.subheader("Распределения (без выбросов)")
+    fig1 = px.histogram(filtered_df_no_outliers, x="AverageTemperature", nbins=50, title="Распределение средней температуры (3σ-фильтрация)")
     st.plotly_chart(fig1, use_container_width=True)
 
-    country_counts = filtered_df["Country"].value_counts().head(20)
-    fig2 = px.bar(country_counts, x=country_counts.index, y=country_counts.values, title="Топ-20 стран по числу записей")
+    country_counts = filtered_df_no_outliers["Country"].value_counts().head(20)
+    fig2 = px.bar(country_counts, x=country_counts.index, y=country_counts.values, title="Топ-20 стран по числу записей (без выбросов)")
     st.plotly_chart(fig2, use_container_width=True)
 
     # --- Корреляция ---
-    st.subheader("Корреляционная матрица")
-    numeric_cols = filtered_df.select_dtypes(include=[np.number])
+    st.subheader("Корреляционная матрица (без выбросов)")
+    numeric_cols = filtered_df_no_outliers.select_dtypes(include=[np.number])
     corr = numeric_cols.corr()
-    fig3 = px.imshow(corr, text_auto=True, title="Корреляция числовых признаков")
+    fig3 = px.imshow(corr, text_auto=True, title="Корреляция числовых признаков (без выбросов)")
     st.plotly_chart(fig3, use_container_width=True)
 
     # --- Scatter plot ---
-    st.subheader("Scatter: Температура vs Широта")
-    fig4 = px.scatter(filtered_df, x="Latitude", y="AverageTemperature", color="Country", title="Зависимость температуры от широты")
+    st.subheader("Scatter: Температура vs Широта (без выбросов)")
+    fig4 = px.scatter(filtered_df_no_outliers, x="Latitude", y="AverageTemperature", color="Country", title="Зависимость температуры от широты (без выбросов)")
     st.plotly_chart(fig4, use_container_width=True)
 
 # === СТРАНИЦА 2: Анализ и экологические тренды ===
@@ -120,67 +134,68 @@ elif page == "2. Результаты анализа":
     if countries_analysis:
         analysis_df = analysis_df[analysis_df["Country"].isin(countries_analysis)]
 
+    # --- Очистка от выбросов перед анализом ---
+    if not analysis_df.empty and 'AverageTemperature' in analysis_df.columns:
+        outlier_idx = outliers_indices('AverageTemperature', analysis_df)
+        analysis_df = analysis_df.drop(outlier_idx)
+
     # === 1. Глобальный тренд температуры ===
-    st.subheader("1. Глобальный тренд температуры")
+    st.subheader("1. Глобальный тренд температуры (без выбросов)")
     yearly = analysis_df.groupby("Year")["AverageTemperature"].mean().reset_index()
-    fig = px.line(yearly, x="Year", y="AverageTemperature", title="Средняя глобальная температура по годам")
+    fig = px.line(yearly, x="Year", y="AverageTemperature", title="Средняя глобальная температура по годам (без выбросов)")
     st.plotly_chart(fig, use_container_width=True)
 
     # === 2. Сезонность по месяцам ===
-    st.subheader("2. Сезонность температуры по месяцам")
+    st.subheader("2. Сезонность температуры по месяцам (без выбросов)")
     monthly = analysis_df.groupby("Month")["AverageTemperature"].mean().reset_index()
-    fig = px.line(monthly, x="Month", y="AverageTemperature", title="Средняя температура по месяцам")
+    fig = px.line(monthly, x="Month", y="AverageTemperature", title="Средняя температура по месяцам (без выбросов)")
     st.plotly_chart(fig, use_container_width=True)
 
     # === 3. Средняя температура по странам ===
-    st.subheader("3. Средняя температура по странам")
+    st.subheader("3. Средняя температура по странам (без выбросов)")
     country_avg = analysis_df.groupby("Country")["AverageTemperature"].mean().sort_values(ascending=False).head(20).reset_index()
-    fig = px.bar(country_avg, x="AverageTemperature", y="Country", orientation='h', title="Топ-20 стран по средней температуре")
+    fig = px.bar(country_avg, x="AverageTemperature", y="Country", orientation='h', title="Топ-20 стран по средней температуре (без выбросов)")
     st.plotly_chart(fig, use_container_width=True)
 
     # === 4. Температура по полушариям ===
-    st.subheader("4. Температура по полушариям")
+    st.subheader("4. Температура по полушариям (без выбросов)")
     hemi_avg = analysis_df.groupby("Hemisphere")["AverageTemperature"].mean().reset_index()
-    fig = px.bar(hemi_avg, x="Hemisphere", y="AverageTemperature", title="Средняя температура по полушариям")
+    fig = px.bar(hemi_avg, x="Hemisphere", y="AverageTemperature", title="Средняя температура по полушариям (без выбросов)")
     st.plotly_chart(fig, use_container_width=True)
 
     # === 5. Тепловая карта: Годы × Страны ===
-    st.subheader("5. Тепловая карта: Годы × Страны")
+    st.subheader("5. Тепловая карта: Годы × Страны (без выбросов)")
     heatmap_data = analysis_df.groupby(["Year", "Country"])["AverageTemperature"].mean().unstack(fill_value=0)
-    fig = px.imshow(heatmap_data.T, labels=dict(x="Год", y="Страна", color="Температура"), title="Тепловая карта: страны × годы")
+    fig = px.imshow(heatmap_data.T, labels=dict(x="Год", y="Страна", color="Температура"), title="Тепловая карта: страны × годы (без выбросов)")
     st.plotly_chart(fig, use_container_width=True)
 
     # === 6. Температура по широтным зонам ===
-    st.subheader("6. Температура по широтным зонам")
+    st.subheader("6. Температура по широтным зонам (без выбросов)")
     latzone_avg = analysis_df.groupby("LatZone")["AverageTemperature"].mean().reset_index()
-    fig = px.bar(latzone_avg, x="LatZone", y="AverageTemperature", title="Средняя температура по широтным зонам")
+    fig = px.bar(latzone_avg, x="LatZone", y="AverageTemperature", title="Средняя температура по широтным зонам (без выбросов)")
     st.plotly_chart(fig, use_container_width=True)
 
     # === 7. Тепловая карта: Месяцы × Широтные зоны ===
-    st.subheader("7. Тепловая карта: Месяцы × Широтные зоны")
+    st.subheader("7. Тепловая карта: Месяцы × Широтные зоны (без выбросов)")
     month_lat = analysis_df.groupby(["Month", "LatZone"])["AverageTemperature"].mean().unstack(fill_value=0)
-    fig = px.imshow(month_lat.T, labels=dict(x="Месяц", y="Широтная зона", color="Температура"), title="Тепловая карта: месяцы × широтные зоны")
+    fig = px.imshow(month_lat.T, labels=dict(x="Месяц", y="Широтная зона", color="Температура"), title="Тепловая карта: месяцы × широтные зоны (без выбросов)")
     st.plotly_chart(fig, use_container_width=True)
 
     # === 8. Анализ временных рядов ===
-    st.subheader("8. Анализ временных рядов")
+    st.subheader("8. Анализ временных рядов (без выбросов)")
 
-    # Подготовка данных для временного ряда (глобальные средние по годам)
     ts_df = analysis_df.groupby("Year")["AverageTemperature"].mean().reset_index()
     ts_df = ts_df.dropna().sort_values("Year")
     
     if len(ts_df) > 1:
-        # --- Скользящее среднее (10 лет) ---
         ts_df["MovingAvg"] = ts_df["AverageTemperature"].rolling(window=10, min_periods=1).mean()
 
-        # --- Линейная регрессия ---
         X = ts_df[["Year"]].values
         y = ts_df["AverageTemperature"].values
         model = LinearRegression()
         model.fit(X, y)
         ts_df["Trend"] = model.predict(X)
 
-        # --- Прогноз на 10 лет вперёд ---
         future_years = np.arange(ts_df["Year"].max() + 1, ts_df["Year"].max() + 11).reshape(-1, 1)
         future_pred = model.predict(future_years)
         forecast_df = pd.DataFrame({
@@ -188,10 +203,8 @@ elif page == "2. Результаты анализа":
             "Forecast": future_pred
         })
 
-        # --- Аномалии (отклонения от тренда) ---
         ts_df["Anomaly"] = ts_df["AverageTemperature"] - ts_df["Trend"]
 
-        # --- График: Основной тренд + скользящее среднее + прогноз ---
         fig_ts = go.Figure()
         fig_ts.add_trace(go.Scatter(
             x=ts_df["Year"], y=ts_df["AverageTemperature"],
@@ -214,23 +227,21 @@ elif page == "2. Результаты анализа":
             name='Прогноз (линейная регрессия)'
         ))
         fig_ts.update_layout(
-            title="Анализ временного ряда: тренд, сглаживание и прогноз",
+            title="Анализ временного ряда: тренд, сглаживание и прогноз (без выбросов)",
             xaxis_title="Год",
             yaxis_title="Средняя температура (°C)"
         )
         st.plotly_chart(fig_ts, use_container_width=True)
 
-        # --- График аномалий ---
         fig_anomaly = px.line(
             ts_df, x="Year", y="Anomaly",
-            title="Аномалии температуры (отклонение от линейного тренда)",
+            title="Аномалии температуры (отклонение от линейного тренда, без выбросов)",
             labels={"Anomaly": "Аномалия (°C)"}
         )
         fig_anomaly.add_hline(y=0, line_dash="dash", line_color="gray")
         st.plotly_chart(fig_anomaly, use_container_width=True)
 
-        # --- KPI: Коэффициент наклона, R² ---
-        slope = model.coef_[0]  # °C в год
+        slope = model.coef_[0]
         r2 = model.score(X, y)
         col_a, col_b = st.columns(2)
         col_a.metric("Наклон тренда", f"{slope * 100:.2f} °C/столетие")
@@ -238,9 +249,8 @@ elif page == "2. Результаты анализа":
     else:
         st.warning("Недостаточно данных для анализа временного ряда.")
 
-    # === Интерпретация ===
     st.info("""
-    **Ключевые инсайты:**
+    **Ключевые инсайты (на данных без выбросов):**
     - Наблюдается устойчивый рост глобальной средней температуры с XIX века.
     - Четкая сезонность: пик — в июле (северное полушарие), минимум — в январе.
     - Тропические регионы имеют стабильно высокие температуры.
@@ -248,4 +258,3 @@ elif page == "2. Результаты анализа":
     """)
 
 # === Конец ===
-
